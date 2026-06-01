@@ -23,10 +23,11 @@ run_phantom_calc:
     target_spacing_mm : float (optional, default 2.5)
     machineId         : str   (optional) – forwarded for logging only
 """
+
 from pathlib import Path
 
+from gendosecalc.motion import apply_motion, load_motion_source
 from gendosecalc.plan.clinical_run import ClinicalRunContext
-from gendosecalc.motion import load_motion_source, apply_motion
 
 
 def run_dose_calc(session_id: str, params: dict) -> dict:
@@ -45,9 +46,9 @@ def run_dose_calc(session_id: str, params: dict) -> dict:
     dose_grid = ctx.compute_planned_static()
 
     return {
-        "maxDoseGy":  float(dose_grid.dose_gy.max()),
+        "maxDoseGy": float(dose_grid.dose_gy.max()),
         "meanDoseGy": float(dose_grid.dose_gy.mean()),
-        "provenance":  ctx.provenance_dict(),
+        "provenance": ctx.provenance_dict(),
     }
 
 
@@ -79,9 +80,8 @@ def run_phantom_calc(params: dict) -> dict:
     )
 
     return {
-        "maxDoseGy":        float(dose_grid.dose_gy.max()),
-        "meanDoseGy":       float(dose_grid.dose_gy.mean()),
-        "nProjections":     len(projections),
-        "provenance":        ctx.provenance_dict(),
+        "maxDoseGy": float(dose_grid.dose_gy.max()),
+        "meanDoseGy": float(dose_grid.dose_gy.mean()),
+        "nProjections": len(projections),
+        "provenance": ctx.provenance_dict(),
     }
-

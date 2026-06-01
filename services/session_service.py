@@ -4,18 +4,19 @@ pycdms is used only when mounting a dataset folder: scan_folder() classifies
 the files so we can record the dominant content_type (ct_series, rtplan, etc.).
 Patient and session identity live entirely in the local SQLite database.
 """
+
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
+from pycdms import scan_folder
 
 from database import DB_PATH
-from pycdms import scan_folder, group_by_fraction
-
 
 # ── Patients ──────────────────────────────────────────────────────────────────
+
 
 async def get_all_patients() -> list:
     async with aiosqlite.connect(DB_PATH) as db:
@@ -28,14 +29,13 @@ async def get_all_patients() -> list:
 async def get_patient_by_id(patient_id: str) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM patients WHERE id=?", (patient_id,)
-        ) as cur:
+        async with db.execute("SELECT * FROM patients WHERE id=?", (patient_id,)) as cur:
             row = await cur.fetchone()
     return dict(row) if row else None
 
 
 # ── Sessions ──────────────────────────────────────────────────────────────────
+
 
 async def get_sessions_for_patient(patient_id: str) -> list:
     async with aiosqlite.connect(DB_PATH) as db:
@@ -50,7 +50,7 @@ async def get_sessions_for_patient(patient_id: str) -> list:
 
 async def create_session(patient_id: str, label: str) -> dict:
     session_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT INTO sessions (id, patient_id, label, created_at, updated_at) "
@@ -70,14 +70,13 @@ async def create_session(patient_id: str, label: str) -> dict:
 async def get_session_by_id(session_id: str) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM sessions WHERE id=?", (session_id,)
-        ) as cur:
+        async with db.execute("SELECT * FROM sessions WHERE id=?", (session_id,)) as cur:
             row = await cur.fetchone()
     return dict(row) if row else None
 
 
 # ── Datasets ──────────────────────────────────────────────────────────────────
+
 
 async def get_datasets_for_session(session_id: str) -> list:
     async with aiosqlite.connect(DB_PATH) as db:
@@ -98,9 +97,7 @@ async def mount_dataset(session_id: str, patient_data_path: str) -> dict:
     ContentInfo.kind value across all files.
     """
     loop = asyncio.get_event_loop()
-    files = await loop.run_in_executor(
-        None, scan_folder, Path(patient_data_path)
-    )
+    files = await loop.run_in_executor(None, scan_folder, Path(patient_data_path))
 
     # Determine dominant content type from the scan
     if files:
@@ -110,7 +107,7 @@ async def mount_dataset(session_id: str, patient_data_path: str) -> dict:
         content_type = "unknown"
 
     dataset_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT INTO datasets (id, session_id, path, content_type, created_at) "
@@ -126,4 +123,3 @@ async def mount_dataset(session_id: str, patient_data_path: str) -> dict:
         "fileCount": len(files),
         "createdAt": now,
     }
-

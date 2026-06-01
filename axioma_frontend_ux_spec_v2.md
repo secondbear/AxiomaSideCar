@@ -19,23 +19,23 @@ Build and run the entire ecosystem (including the Tauri frontend) within WSL2 (U
 ---
 
 ## 2. Advanced Analytical Workflows & Synchronization
-To elevate the system from a standard viewer to a SOTA research TPS, the UI implements deep, bi-directional state synchronization. 
+To elevate the system from a standard viewer to a SOTA research TPS, the UI implements deep, bi-directional state synchronization.
 
 ### A. The Linked Coordinate System (Dual Pointers)
 When comparing two dose grids (e.g., Baseline vs. Fraction 1, or PBE vs. LBTE), the UI supports synchronized crosshairs.
-* **How it works:** The React state (Zustand) holds a global `active_lps_coordinate: [x, y, z]`. 
+* **How it works:** The React state (Zustand) holds a global `active_lps_coordinate: [x, y, z]`.
 * **The UX:** When the user hovers the mouse over Viewport A (LBTE), VTK.js maps the screen pixel to a 3D physical coordinate. It updates the global state in milliseconds. Viewport B (PBE) listens to this state and renders a ghosted crosshair at the exact same anatomical point.
 * **Camera Sync:** Panning, zooming, or scrolling slices in one viewport automatically replicates the camera transformation in the linked viewport.
 
 ### B. Bi-Directional UI Binding (Data <-> 3D)
 Analytical tools are not static; they act as navigational controllers for the 3D space.
-* **DVH to 3D Binding:** Hovering over a specific point on the DVH curve (e.g., "Rectum V60") highlights the corresponding voxels receiving that exact dose in the 3D VTK.js viewport. 
+* **DVH to 3D Binding:** Hovering over a specific point on the DVH curve (e.g., "Rectum V60") highlights the corresponding voxels receiving that exact dose in the 3D VTK.js viewport.
 * **Gamma to 3D Binding:** Clicking a specific row in the Gamma Analysis table (e.g., "PTV - 2%/2mm Failures") automatically calculates the center-of-mass of those failing voxels and snaps the Axial, Coronal, and Sagittal planes directly to that slice, rendering the failures as a bright red overlay.
 
 ### C. Longitudinal Cohort Viewer (Fraction Timeline)
 To analyze intra-fraction motion across an entire treatment course (e.g., 7 fractions of the REMIND trial):
-* **The Timeline Scrubber:** A sleek timeline sits at the bottom of the viewport matrix. 
-* **Small Multiples Grid:** The user can switch from a `2x2` MPR view to a `1x7` grid, displaying the same axial slice across all 7 fractions side-by-side. 
+* **The Timeline Scrubber:** A sleek timeline sits at the bottom of the viewport matrix.
+* **Small Multiples Grid:** The user can switch from a `2x2` MPR view to a `1x7` grid, displaying the same axial slice across all 7 fractions side-by-side.
 * **Playback Mode:** The user can press "Play" on the timeline. The UI requests rapid, sequential memory-mapped slices from the FastAPI bridge, effectively animating the patient's anatomical changes and the resulting dose deformation over the 7-week treatment course.
 
 ### D. Engine-vs-Engine Differential Matrices

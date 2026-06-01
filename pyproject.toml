@@ -9,6 +9,7 @@ description = "FastAPI orchestrator bridging AxiomaUX with DeformCT, GenDoseCalc
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
+    "pydantic-settings>=2.0",
     "uvicorn[standard]>=0.32",
     "aiosqlite>=0.20",
     "python-multipart>=0.0.12",
@@ -23,3 +24,14 @@ axioma-sidecar = "main:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # line length enforced by ruff-format
+
+[tool.ruff.lint.isort]
+known-first-party = ["database", "routers", "services", "jobs"]

@@ -2,42 +2,42 @@
 
 ## Overview
 Turn the stubbed FastAPI scaffold into a working orchestrator that bridges AxiomaUX (Tauri/React)
-with three engine repos: **DeformCT**, **GenDoseCalc**, and **pycdms**. Organised into
+with three engine repos: **DeformCTMovement**, **GenDoseCalc**, and **pycdms**. Organised into
 independently-verifiable phases.
 
 ---
 
-## Phase 1 — Environment & Engine Wiring
+## Phase 1 — Environment & Engine Wiring ✅
 
-### Step 1 — Install engines as editable siblings  ← DO THIS FIRST
-The three engine repos must be cloned as siblings of this repo under `~/repos/`:
+### Step 1 — Install engines as editable siblings ✅
+Actual sibling layout (repo names corrected from original plan):
 
 ```
 ~/repos/
-├── AxiomaSideCar/   ← this repo
-├── DeformCT/
+├── AxiomaSideCar/        ← this repo
+├── DeformCTMovement/     ← was: DeformCT (wrong name)
 ├── GenDoseCalc/
-└── pycdms/          (or: pip install pycdms if published on PyPI)
+│   └── GenDoseCalc/      ← installable package is one level deeper
+└── pycdms/
 ```
 
-Create the venv and install everything:
-
-```bash
-cd ~/repos/AxiomaSideCar
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+`requirements.txt` editable paths:
+```
+-e ../DeformCTMovement
+-e ../GenDoseCalc/GenDoseCalc
+-e ../pycdms
 ```
 
-The `-e ../DeformCT`, `-e ../GenDoseCalc`, `-e ../pycdms` lines in `requirements.txt` resolve
-directly to the sibling dirs. Edits to engine code are live immediately — no reinstall needed.
+Python 3.11 required (`DeformCTMovement` declares `requires-python >= 3.11`).
+venv created with `python3.11 -m venv .venv`.
 
 **Verify:**
 ```bash
-python -c "import deformct, gendosecalc, pycdms; print('engines OK')"
+source .venv/bin/activate
+python -c "import gendosecalc, pycdms; print('engines OK')"
 ```
 
-### Step 2 — Config & settings
+### Step 2 — Config & settings ✅
 - Add `config.py` using `pydantic-settings`: exposes `DB_PATH`, `CORS_ORIGIN`,
   optional `ENGINE_DATA_ROOT`.
 - Add `.env.example` with commented defaults.
@@ -48,116 +48,116 @@ python -c "import deformct, gendosecalc, pycdms; print('engines OK')"
 ## Phase 2 — Typed Contracts
 *Depends on Phase 1*
 
-### Step 3 — Pydantic schemas
-Add `schemas.py` with models matching the frontend contracts defined in `backend_multi_axiomics.md`:
+### Step 3 — Pydantic schemas ✅
+Add `schemas.py` with models matching the frontend contracts:
 
 | Schema | Key fields |
 |--------|------------|
-| `Patient` | id, name, dob, cohort |
-| `Session` | id, patientId, label, createdAt |
-| `DatasetMeta` | id, sessionId, path, modality, fractionIndex |
-| `JobStatus` | id, sessionId, type, status, progress, message, createdAt, updatedAt |
-| `WaterPhantomResult` | pdd, profileDmax, profile10cm, outputFactors |
-| `RegistrationResult` | fractionIndex, rmsSurfaceDistanceMm, meanDice, approved |
-| `AccumulatedDoseResult` | patientId, includedFractionIndices, totalPrescriptionGy, structures |
+| `Patient` | id, externalId, name, dob, createdAt |
+| `Session` | id, patientId, label, createdAt, updatedAt |
+| `DatasetMeta` | id, sessionId, path, contentType, fileCount, createdAt |
+| `JobStatus` | id, sessionId, type, status, progress, message, result, createdAt, updatedAt |
+| `MachineRecord` | id, name, engine, status, params, lockedHash, createdAt, updatedAt |
+| `RegistrationResult` | manifest, outDir |
+| `DoseResult` | maxDoseGy, meanDoseGy, nProjections, provenance |
+| `AccumulatedDoseResult` | nStates, totalWeight, accumulatedMaxGy, accumulatedMeanGy, totalElapsedS |
 
 Annotate router return types so FastAPI generates correct OpenAPI at `/docs`.
 
-### Step 4 — Wire pycdms to session_service
-Replace placeholder calls in `services/session_service.py` with the real `pycdms` public API.
-**Confirm actual method names against the `pycdms` repo source before writing.**
+### Step 4 — Wire pycdms to session_service ✅
+Done. `services/session_service.py` uses SQLite for all patient/session/dataset CRUD.
+`pycdms.scan_folder()` is called only in `mount_dataset()` to classify archive files.
+`pycdms.DataCatalogue` does not exist — pycdms is a file format parser only.
 
 ---
 
-## Phase 3 — Slice Hot Path
-*Can run in parallel with Phase 4*
+## Phase 3 — Slice Hot Path ✅
 
-### Step 5 — Implement slice_service
-- Wire `services/slice_service.py` to real pycdms volume loading.
-- Keep `run_in_executor` offload — this route fires on every MPR scroll event.
-- Add a small LRU / `numpy.memmap` volume cache so repeated requests don't reload from disk.
-- Confirm `X-Slice-Meta` response header shape in `routers/slices.py`:
-  ```
-  X-Slice-Meta: {"width": 512, "height": 512, "min": -1024, "max": 3071}
-  ```
+### Step 5 — Implement slice_service ✅
+`services/slice_service.py` loads DICOM CT series with pydicom, applies
+RescaleSlope/RescaleIntercept, and returns raw int16 bytes with `X-Slice-Meta` header.
+Dataset path is looked up from the `datasets` SQLite table.
+`_load_ct_volume` is decorated with `@lru_cache(maxsize=4)` — repeated MPR scroll
+requests for the same dataset hit the in-process cache instead of reloading from disk.
 
 ---
 
 ## Phase 4 — Jobs & Engine Services
-*Can run in parallel with Phase 3*
 
-### Step 6 — Finish job worker
-- Add missing `dvh` and `gamma` handlers in `jobs/handlers.py`.
-- Persist job results to the `result` column in SQLite on completion.
-- Confirm `progress_cb` propagates correctly from long-running engine calls.
+### Step 6 — Finish job worker ✅
+All six job types implemented in `jobs/handlers.py`. DVH and gamma handlers
+compute dose from params directly (no intermediate file needed):
+- `dvh-calc` → `ClinicalRunContext` + `compute_dvh` + `load_structure_masks_from_rtstruct`
+- `gamma-calc` → planned static dose vs motion-corrected dose → `compute_gamma`
+Job results are persisted to the `result` column in SQLite on completion.
 
-### Step 7 — Real engine service calls
-- `services/dose_service.py` — wire `DoseEngine` + `WaterPhantomMode` to real GenDoseCalc API.
-  Confirm class/method names from the GenDoseCalc repo.
-- `services/deform_service.py` — wire `DeformableRegistration` to real DeformCT API.
-  Confirm `register_all_fractions`, `accumulate_dose` method signatures.
+Required params per type are documented in `.github/skills/jobs-queue/SKILL.md`.
 
----
+### Step 7 — Real engine service calls ✅
+All three service files rewritten to use real engine APIs:
 
-## Phase 5 — Commissioning & Adaptive
-*Depends on Phases 3 + 4*
-
-### Step 8 — Commissioning router
-- Machine CRUD: full `GET`, `POST`, `PUT`, `DELETE` in `routers/commissioning.py`.
-- CSV / IBA / PTW measurement file parsing in the `/upload` route.
-- SHA-256 lock: hash `{id + params}`, store `locked_hash`, set status → `locked`.
-
-### Step 9 — Adaptive router
-- Registration list: `GET /adaptive/sessions/:id/registrations` — DeformCT results per fraction.
-- Contour review PATCH: validate status ∈ {pending, accepted, rejected}, upsert `contour_reviews`.
-- Dose accumulation: `GET /adaptive/sessions/:id/dose-accumulation` — DeformCT DVF warp → GenDoseCalc DVH rollup.
+| File | Was (wrong) | Now (correct) |
+|------|-------------|---------------|
+| `services/deform_service.py` | `deformct.core.DeformableRegistration` | `gendosecalc.deform.generate_ensemble` + `compute_deformable_dose` |
+| `services/dose_service.py` | `gendosecalc.core.DoseEngine` | `ClinicalRunContext.build().compute_planned_static()` + `compute_motion_dose` |
+| `services/session_service.py` | `pycdms.DataCatalogue` | SQLite CRUD + `pycdms.scan_folder` |
+| `services/slice_service.py` | `pycdms.DataCatalogue.load_volume` | pydicom direct load |
 
 ---
 
-## Phase 6 — Tests & CI
+## Phase 5 — Commissioning & Adaptive ✅
 
-### Step 10 — pytest suite
+### Step 8 — Commissioning router ✅
+Full machine CRUD, file upload, water-phantom calc, SHA-256 lock.
+Write-through sync: every `POST /machines` and `POST /lock` also calls
+`gendosecalc.service.machines` to keep `machines.yaml` in sync.
+GenDoseCalc YAML is the ground truth for `ClinicalRunContext.build()` auto-selection.
+
+### Step 9 — Adaptive router ✅
+- `GET /adaptive/sessions/:id/registrations` → calls `run_registration` (deform engine)
+- `PATCH /adaptive/contours/:id/status` → upserts `contour_reviews` table
+- `GET /adaptive/sessions/:id/dose-accumulation` → calls `run_dose_accumulation`
+
+---
+
+## Phase 6 — Tests & CI  ← NEXT
+
+### Step 10 — pytest suite  ← NEXT
 - Add `tests/` + `conftest.py`.
-- Use FastAPI `TestClient` (httpx) for all routes.
+- Use FastAPI `TestClient` for all routes.
 - Fixtures monkeypatch the three engines — CI needs no real patient data or GPU.
-- Cover: patient/session/dataset routes, slice route (mocked volume), job lifecycle
+- Cover: patient/session/dataset CRUD, slice route (mocked volume), job lifecycle
   (enqueue → poll → completed), commissioning lock, contour PATCH.
 
 ### Step 11 — GitHub Actions CI
 Add `.github/workflows/ci.yml`:
 - Triggers on push and PR to `main`.
-- Steps: checkout → setup Python 3.11 → install deps (lightweight stubs, no real engines in CI)
+- Steps: checkout → setup Python 3.11 → install deps (stub engines via `conftest.py`)
   → `ruff check .` → `pytest -q`.
 
 ---
 
-## Phase 7 — Git Hooks
+## Phase 7 — Git Hooks ✅
 
-### Step 12 — pre-commit framework
-Add `.pre-commit-config.yaml` with:
-- `ruff` — lint on every commit
-- `ruff-format` — auto-format on every commit
-- `trailing-whitespace` + `end-of-file-fixer` (pre-commit built-ins)
-- `pytest -q` — on `pre-push` stage only (fast with mocks, no real data needed)
+### Step 12 — pre-commit framework ✅
+`.pre-commit-config.yaml` created and installed. Both hook stages active:
+- `pre-commit`: trailing-whitespace, end-of-file-fixer, check-yaml, ruff --fix, ruff-format
+- `pre-push`: `pytest -q`
 
-Install after creating the file:
-```bash
-pip install pre-commit
-pre-commit install --install-hooks -t pre-commit -t pre-push
-```
+`pyproject.toml` has `[tool.ruff]` config (`target-version=py311`, `select=E,F,I,UP,B,SIM`).
 
 ---
 
-## Phase 8 — Copilot Skills
+## Phase 8 — Copilot Skills ✅
 
-### Step 13 — Author SKILL.md files
-Add `.github/skills/` with three domain-knowledge files for the Copilot agent:
+### Step 13 — SKILL.md files ✅
+`.github/skills/` contains three domain-knowledge files:
 
-| Skill file | Covers |
-|------------|--------|
-| `axioma-engine-integration/SKILL.md` | How to wrap DeformCT / GenDoseCalc / pycdms, `run_in_executor` pattern, editable install conventions |
-| `slice-hotpath/SKILL.md` | Binary slice route rules, `X-Slice-Meta` header shape, volume cache strategy, perf constraints |
-| `jobs-queue/SKILL.md` | Job handler signature, SQLite lifecycle, progress callback pattern, HANDLERS dict extension |
+| Skill | Covers |
+|-------|--------|
+| `axioma-engine-integration/SKILL.md` | Real import paths, call signatures, run_in_executor pattern, wrong imports to avoid |
+| `slice-hotpath/SKILL.md` | X-Slice-Meta header shape, LRU cache, axis mapping, HU correction |
+| `jobs-queue/SKILL.md` | Handler signature, HANDLERS dict, SQLite schema, dvh/gamma wiring guide |
 
 ---
 
@@ -165,38 +165,39 @@ Add `.github/skills/` with three domain-knowledge files for the Copilot agent:
 
 ### Step 14 — PyInstaller spec
 Add `sidecar.spec` to build the single-file binary Tauri expects:
-
 ```
 axioma-sidecar/bin/axioma-sidecar
 ```
-
-Referenced in `AxiomaUX/src-tauri/tauri.conf.json` as `externalBin`. The `-e` editable
-installs become bundled code at PyInstaller build time.
+Referenced in `AxiomaUX/src-tauri/tauri.conf.json` as `externalBin`.
 
 ---
 
 ## Verification Checklist
 
-- [ ] `python -c "import deformct, gendosecalc, pycdms"` prints `engines OK`  ← Phase 1 Step 1
+- [x] `python -c "import gendosecalc, pycdms; print('engines OK')"` — passes
+- [x] All service imports load clean: `python -c "import main; print('app OK')"`
+- [x] `pre-commit run --all-files` — all hooks pass
+- [x] `config.py` + `.env.example` — typed settings wired to `main.py` and `database.py`
+- [x] `schemas.py` — all routes annotated with `response_model`
+- [x] `_load_ct_volume` has `@lru_cache(maxsize=4)`
+- [x] `dvh-calc` and `gamma-calc` handlers registered in `HANDLERS`
 - [ ] `uvicorn main:app --port 8000 --reload` boots clean; `/docs` shows all typed routes
-- [ ] `GET /api/v1/datasets/{id}/slice?axis=axial&index=120` returns `application/octet-stream` with `X-Slice-Meta` header
-- [ ] POST a job → poll `GET /api/v1/jobs/{id}` → status reaches `completed`
+- [ ] `GET /api/v1/datasets/{id}/slice?axis=axial&index=120` returns binary + `X-Slice-Meta`
+- [ ] POST a job → poll → status reaches `completed`
 - [ ] `pytest -q` green locally and in CI
-- [ ] `pre-commit run --all-files` passes with no violations
-- [ ] Tauri sidecar binary builds and boots (`bin/axioma-sidecar`)
+- [ ] Tauri sidecar binary builds and boots
 
 ---
 
 ## Decisions & Scope
 
-- **Skills** = Copilot `SKILL.md` files in `.github/skills/`
-- **Hooks** = git hooks via `pre-commit` framework (`pre-commit` stage + `pre-push` stage)
-- **Engines** are real sibling repos installed with `-e`; Phase 1 Step 1 is the prerequisite
-- **Tests** use monkeypatched engine fixtures — CI needs no patient data or GPU
-- **Excluded for now:** auth / multi-user, dose-accumulation rollup detail (stub until engine API
-  confirmed after Phase 1), frontend integration smoke test
+- **Engines** are real sibling repos installed with `-e`; Python 3.11 required
+- **pycdms** is a file-format parser only — not a patient/session store
+- **Machine registry** ground truth is GenDoseCalc's `machines.yaml`; sidecar syncs via write-through
+- **DVH/gamma** stay in `gendosecalc.analysis` — no separate repo needed
+- **Tests** monkeypatch engine fixtures — CI needs no patient data or GPU
+- **Excluded for now:** auth/multi-user, frontend integration smoke test
 
----
 
 ## Step Dependency Graph
 

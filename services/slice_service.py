@@ -5,7 +5,9 @@ containing a DICOM CT series.  pydicom loads the slices; the volume is
 assembled in-memory as (Z, Y, X) int16 and the requested plane is returned
 as raw bytes with its dimensions and window range.
 """
+
 import asyncio
+from functools import lru_cache
 from pathlib import Path
 
 import aiosqlite
@@ -14,9 +16,10 @@ import pydicom
 
 from database import DB_PATH
 
-
 # ── Volume loader (CPU-bound, called via run_in_executor) ─────────────────────
 
+
+@lru_cache(maxsize=4)
 def _load_ct_volume(dataset_path: str) -> np.ndarray:
     """Load a DICOM CT series into a (Z, Y, X) int16 numpy array.
 
@@ -50,9 +53,7 @@ def _load_ct_volume(dataset_path: str) -> np.ndarray:
     return np.stack(arrays, axis=0)  # (Z, Y, X)
 
 
-def _extract_slice(
-    dataset_path: str, axis: str, index: int
-) -> tuple[bytes, int, int, int, int]:
+def _extract_slice(dataset_path: str, axis: str, index: int) -> tuple[bytes, int, int, int, int]:
     vol = _load_ct_volume(dataset_path)  # (Z, Y, X)
 
     if axis == "axial":
@@ -67,8 +68,8 @@ def _extract_slice(
     plane = plane.astype(np.int16)
     return (
         plane.tobytes(),
-        int(plane.shape[1]),   # width
-        int(plane.shape[0]),   # height
+        int(plane.shape[1]),  # width
+        int(plane.shape[0]),  # height
         int(plane.min()),
         int(plane.max()),
     )
@@ -76,15 +77,16 @@ def _extract_slice(
 
 # ── Public async API ──────────────────────────────────────────────────────────
 
+
 async def get_slice_bytes(
     dataset_id: str, axis: str, index: int, lod: str
 ) -> tuple[bytes, int, int, int, int]:
     # Look up the dataset path from the database
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT path FROM datasets WHERE id=?", (dataset_id,)
-        ) as cur:
-            row = await cur.fetchone()
+    async with (
+        aiosqlite.connect(DB_PATH) as db,
+        db.execute("SELECT path FROM datasets WHERE id=?", (dataset_id,)) as cur,
+    ):
+        row = await cur.fetchone()
 
     if row is None:
         raise KeyError(f"Dataset {dataset_id!r} not found")
@@ -92,4 +94,3 @@ async def get_slice_bytes(
     dataset_path = row[0]
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _extract_slice, dataset_path, axis, index)
-

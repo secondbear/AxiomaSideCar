@@ -1,5 +1,6 @@
 # FastAPI stack
 fastapi>=0.115
+pydantic-settings>=2.0
 uvicorn[standard]>=0.32
 aiosqlite>=0.20
 python-multipart>=0.0.12

@@ -1,6 +1,8 @@
 import aiosqlite
 
-DB_PATH = "axioma.db"
+from config import settings
+
+DB_PATH = settings.db_path
 
 CREATE_TABLES = """
 CREATE TABLE IF NOT EXISTS patients (

@@ -24,9 +24,10 @@ run_dose_accumulation:
     deformed_dir : str  – out_dir from a previous run_registration run
     target_spacing_mm : float (optional, default 2.5)
 """
+
 from pathlib import Path
 
-from gendosecalc.deform import generate_ensemble, DeformationConfig
+from gendosecalc.deform import DeformationConfig, generate_ensemble
 from gendosecalc.io.deformed_ct_set import load_deformed_ct_set
 from gendosecalc.plan.clinical_run import ClinicalRunContext
 from gendosecalc.plan.deformable_dose import compute_deformable_dose
@@ -78,4 +79,3 @@ def run_dose_accumulation(session_id: str, params: dict) -> dict:
     )
 
     return report.as_dict()
-
