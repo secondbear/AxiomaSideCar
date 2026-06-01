@@ -3,6 +3,30 @@ import aiosqlite
 DB_PATH = "axioma.db"
 
 CREATE_TABLES = """
+CREATE TABLE IF NOT EXISTS patients (
+    id          TEXT PRIMARY KEY,
+    external_id TEXT,           -- MRN or CDMS patient ID
+    name        TEXT,
+    dob         TEXT,
+    created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id          TEXT PRIMARY KEY,
+    patient_id  TEXT NOT NULL REFERENCES patients(id),
+    label       TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS datasets (
+    id           TEXT PRIMARY KEY,
+    session_id   TEXT NOT NULL REFERENCES sessions(id),
+    path         TEXT NOT NULL,  -- absolute path to the CDMS / DICOM folder
+    content_type TEXT NOT NULL,  -- e.g. "ct_series", "rtplan", "motion_xml"
+    created_at   TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS jobs (
     id          TEXT PRIMARY KEY,
     session_id  TEXT NOT NULL,

@@ -6,8 +6,8 @@ python-multipart>=0.0.12
 httpx>=0.28
 
 # Editable installs — all three engine repos cloned as siblings
--e ../DeformCT
--e ../GenDoseCalc
+-e ../DeformCTMovement
+-e ../GenDoseCalc/GenDoseCalc
 -e ../pycdms
 
 # Shared scientific stack
