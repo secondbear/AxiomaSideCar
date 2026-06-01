@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "axioma-sidecar"
+version = "0.1.0"
+description = "FastAPI orchestrator bridging AxiomaUX with DeformCT, GenDoseCalc, and pycdms"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "aiosqlite>=0.20",
+    "python-multipart>=0.0.12",
+    "httpx>=0.28",
+    "numpy>=1.26",
+    "scipy>=1.13",
+    "pydicom>=2.4",
+]
+
+[project.scripts]
+axioma-sidecar = "main:app"
+
+[tool.setuptools.packages.find]
+where = ["."]

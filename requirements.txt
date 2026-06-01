@@ -1,0 +1,16 @@
+# FastAPI stack
+fastapi>=0.115
+uvicorn[standard]>=0.32
+aiosqlite>=0.20
+python-multipart>=0.0.12
+httpx>=0.28
+
+# Editable installs — all three engine repos cloned as siblings
+-e ../DeformCT
+-e ../GenDoseCalc
+-e ../pycdms
+
+# Shared scientific stack
+numpy>=1.26
+scipy>=1.13
+pydicom>=2.4

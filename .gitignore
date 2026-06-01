@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# SQLite database (runtime artefact)
+axioma.db
+*.db-shm
+*.db-wal
+
+# PyInstaller / Nuitka build artefacts
+bin/
+*.spec
+
+# Secrets / local config
+.env
+.env.*
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
