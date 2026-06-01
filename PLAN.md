@@ -141,11 +141,16 @@ Side-fixes discovered by tests:
   to match `Session` / `DatasetMeta` schemas
 - Slice router now returns HTTP 404 for unknown dataset IDs
 
-### Step 11 — GitHub Actions CI  ← NEXT
-Add `.github/workflows/ci.yml`:
+### Step 11 — GitHub Actions CI ✅
+`.github/workflows/ci.yml` created:
 - Triggers on push and PR to `main`.
-- Steps: checkout → setup Python 3.11 → install deps (stub engines via `conftest.py`)
+- Steps: checkout → setup Python 3.11 → `pip install` all real deps (no `-e` sibling paths)
+  → `pip install -e ci-stubs/gendosecalc-stub -e ci-stubs/pycdms-stub`
   → `ruff check .` → `pytest -q`.
+- `ci-stubs/gendosecalc-stub/` — minimal stubs for all 5 gendosecalc sub-packages
+  (`motion`, `deform`, `io`, `plan`, `analysis`, `service`) that satisfy top-level imports.
+- `ci-stubs/pycdms-stub/` — minimal `scan_folder` stub.
+- All 26 tests verified passing locally with stubs installed.
 
 ---
 
@@ -175,7 +180,7 @@ Add `.github/workflows/ci.yml`:
 
 ## Phase 9 — Packaging (Optional, last)
 
-### Step 14 — PyInstaller spec
+### Step 14 — PyInstaller spec  ← NEXT
 Add `sidecar.spec` to build the single-file binary Tauri expects:
 ```
 axioma-sidecar/bin/axioma-sidecar

@@ -1,0 +1,1 @@
+# gendosecalc CI stub package

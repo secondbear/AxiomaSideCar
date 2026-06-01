@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install \
+            "fastapi>=0.115" \
+            "pydantic-settings>=2.0" \
+            "uvicorn[standard]>=0.32" \
+            "aiosqlite>=0.20" \
+            "python-multipart>=0.0.12" \
+            "httpx>=0.28" \
+            "pytest>=9.0" \
+            "pytest-asyncio>=0.25" \
+            "numpy>=1.26" \
+            "scipy>=1.13" \
+            "pydicom>=2.4" \
+            "ruff"
+          pip install -e ci-stubs/gendosecalc-stub
+          pip install -e ci-stubs/pycdms-stub
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        run: pytest -q
