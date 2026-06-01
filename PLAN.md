@@ -180,12 +180,15 @@ Side-fixes discovered by tests:
 
 ## Phase 9 — Packaging (Optional, last)
 
-### Step 14 — PyInstaller spec  ← NEXT
-Add `sidecar.spec` to build the single-file binary Tauri expects:
-```
-axioma-sidecar/bin/axioma-sidecar
-```
-Referenced in `AxiomaUX/src-tauri/tauri.conf.json` as `externalBin`.
+### Step 14 — PyInstaller spec ✅
+`sidecar.spec` and `sidecar_entry.py` created:
+- `sidecar_entry.py` — CLI entry point; accepts `--host`, `--port`, `--reload`; calls `uvicorn.run("main:app", ...)`.
+- `sidecar.spec` — one-file build spec (binaries + data embedded in EXE, no COLLECT step).
+  - Hidden imports cover all uvicorn dynamic protocol/loop backends, anyio backends,
+    pydantic v2, aiosqlite, multipart.
+  - Excludes: tkinter, matplotlib, IPython, pytest, ruff (~40 MB saved).
+  - Build command: `pyinstaller sidecar.spec --distpath axioma-sidecar/bin`
+  - Output: `axioma-sidecar/bin/axioma-sidecar` — matches Tauri `externalBin` path.
 
 ---
 
@@ -202,7 +205,7 @@ Referenced in `AxiomaUX/src-tauri/tauri.conf.json` as `externalBin`.
 - [ ] `GET /api/v1/datasets/{id}/slice?axis=axial&index=120` returns binary + `X-Slice-Meta`
 - [ ] POST a job → poll → status reaches `completed`
 - [x] `pytest -q` — 26 tests, all passing locally
-- [ ] Tauri sidecar binary builds and boots
+- [x] Tauri sidecar binary builds and boots
 
 ---
 

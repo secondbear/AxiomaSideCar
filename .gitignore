@@ -27,6 +27,8 @@ axioma.db
 # PyInstaller / Nuitka build artefacts
 bin/
 *.spec
+# but keep the hand-authored spec in version control
+!sidecar.spec
 
 # Secrets / local config
 .env
