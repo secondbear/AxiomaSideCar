@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
+from fastapi import HTTPException
 from pycdms import scan_folder
 
 from database import DB_PATH
@@ -96,8 +97,11 @@ async def mount_dataset(session_id: str, patient_data_path: str) -> dict:
     objects; the dominant content type is inferred from the most common
     ContentInfo.kind value across all files.
     """
+    path = Path(patient_data_path)
+    if not path.exists():
+        raise HTTPException(status_code=422, detail=f"Path does not exist: {patient_data_path}")
     loop = asyncio.get_event_loop()
-    files = await loop.run_in_executor(None, scan_folder, Path(patient_data_path))
+    files = await loop.run_in_executor(None, scan_folder, path)
 
     # Determine dominant content type from the scan
     if files:

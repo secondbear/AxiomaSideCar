@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import UTC, datetime
 
 import aiosqlite
@@ -7,7 +8,7 @@ from pydantic import BaseModel
 
 from database import DB_PATH
 from schemas import AccumulatedDoseResult
-from services.deform_service import run_dose_accumulation, run_registration
+from services.deform_service import run_dose_accumulation
 
 router = APIRouter()
 
@@ -17,9 +18,31 @@ router = APIRouter()
 
 @router.get("/adaptive/sessions/{session_id}/registrations")
 async def get_registrations(session_id: str):
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, run_registration, session_id, {})
-    return result.get("registrations", [])
+    """Return stored registration results for this session.
+
+    Results are written by the 'register' job worker after the engine completes.
+    This endpoint only reads — it never invokes the engine.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT result FROM jobs "
+            "WHERE session_id=? AND type='register' AND status='completed' "
+            "ORDER BY created_at",
+            (session_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+    results = []
+    for row in rows:
+        if row["result"]:
+            data = json.loads(row["result"])
+            if isinstance(data, list):
+                results.extend(data)
+            elif isinstance(data, dict) and "registrations" in data:
+                results.extend(data["registrations"])
+            else:
+                results.append(data)
+    return results
 
 
 # ── Contour review status ─────────────────────────────────────────────────────
@@ -39,12 +62,7 @@ async def update_contour_status(contour_id: str, body: ContourStatusBody):
         async with db.execute("SELECT id FROM contour_reviews WHERE id=?", (contour_id,)) as cur:
             row = await cur.fetchone()
         if row is None:
-            # Auto-create the review record if it doesn't exist yet
-            await db.execute(
-                "INSERT INTO contour_reviews (id, session_id, fraction_index, structure_id, status) "
-                "VALUES (?, '', 0, '', ?)",
-                (contour_id, body.status),
-            )
+            raise HTTPException(status_code=404, detail=f"Contour review {contour_id!r} not found")
         else:
             await db.execute(
                 "UPDATE contour_reviews SET status=? WHERE id=?",
