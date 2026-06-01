@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from services.slice_service import get_slice_bytes
@@ -15,7 +15,10 @@ async def get_slice(
     index: int,
     lod: str = "native",
 ):
-    buf, width, height, min_val, max_val = await get_slice_bytes(dataset_id, axis, index, lod)
+    try:
+        buf, width, height, min_val, max_val = await get_slice_bytes(dataset_id, axis, index, lod)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     meta = json.dumps({"width": width, "height": height, "min": min_val, "max": max_val})
     return Response(
         content=buf,

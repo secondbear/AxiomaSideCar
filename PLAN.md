@@ -120,16 +120,28 @@ GenDoseCalc YAML is the ground truth for `ClinicalRunContext.build()` auto-selec
 
 ---
 
-## Phase 6 — Tests & CI  ← NEXT
+## Phase 6 — Tests & CI
 
-### Step 10 — pytest suite  ← NEXT
-- Add `tests/` + `conftest.py`.
-- Use FastAPI `TestClient` for all routes.
-- Fixtures monkeypatch the three engines — CI needs no real patient data or GPU.
-- Cover: patient/session/dataset CRUD, slice route (mocked volume), job lifecycle
-  (enqueue → poll → completed), commissioning lock, contour PATCH.
+### Step 10 — pytest suite ✅
+`tests/` created with four test modules (26 tests, all passing):
 
-### Step 11 — GitHub Actions CI
+| Module | Coverage |
+|--------|----------|
+| `test_patients_sessions.py` | Patient/session CRUD, dataset mount, schema fields |
+| `test_jobs.py` | Enqueue, poll, lifecycle, all 6 job types (dose, register, accumulation, phantom, dvh, gamma) |
+| `test_slices.py` | Binary slice response + `X-Slice-Meta` header, 404 on unknown dataset |
+| `test_commissioning.py` | Machine CRUD, lock (SHA-256), file upload, water-phantom calc |
+| `test_adaptive.py` | Contour review PATCH — accepted/rejected/invalid/idempotent |
+
+`conftest.py` uses a per-test temp-file SQLite DB (not `:memory:` which creates
+a new DB per connection). Engine calls are monkeypatched; no patient data or GPU needed.
+
+Side-fixes discovered by tests:
+- `create_session` and `mount_dataset` in `session_service.py` now return snake_case keys
+  to match `Session` / `DatasetMeta` schemas
+- Slice router now returns HTTP 404 for unknown dataset IDs
+
+### Step 11 — GitHub Actions CI  ← NEXT
 Add `.github/workflows/ci.yml`:
 - Triggers on push and PR to `main`.
 - Steps: checkout → setup Python 3.11 → install deps (stub engines via `conftest.py`)
@@ -184,7 +196,7 @@ Referenced in `AxiomaUX/src-tauri/tauri.conf.json` as `externalBin`.
 - [ ] `uvicorn main:app --port 8000 --reload` boots clean; `/docs` shows all typed routes
 - [ ] `GET /api/v1/datasets/{id}/slice?axis=axial&index=120` returns binary + `X-Slice-Meta`
 - [ ] POST a job → poll → status reaches `completed`
-- [ ] `pytest -q` green locally and in CI
+- [x] `pytest -q` — 26 tests, all passing locally
 - [ ] Tauri sidecar binary builds and boots
 
 ---

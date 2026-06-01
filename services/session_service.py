@@ -60,10 +60,10 @@ async def create_session(patient_id: str, label: str) -> dict:
         await db.commit()
     return {
         "id": session_id,
-        "patientId": patient_id,
+        "patient_id": patient_id,
         "label": label,
-        "createdAt": now,
-        "updatedAt": now,
+        "created_at": now,
+        "updated_at": now,
     }
 
 
@@ -117,9 +117,9 @@ async def mount_dataset(session_id: str, patient_data_path: str) -> dict:
         await db.commit()
     return {
         "id": dataset_id,
-        "sessionId": session_id,
+        "session_id": session_id,
         "path": str(patient_data_path),
-        "contentType": content_type,
-        "fileCount": len(files),
-        "createdAt": now,
+        "content_type": content_type,
+        "file_count": len(files),
+        "created_at": now,
     }
