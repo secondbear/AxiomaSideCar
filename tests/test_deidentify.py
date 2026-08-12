@@ -34,6 +34,24 @@ def _write_dicom(path):
     dataset.save_as(path)
 
 
+def _write_referencing_dicom(path, referenced_sop_uid):
+    file_meta = FileMetaDataset()
+    file_meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
+    file_meta.MediaStorageSOPInstanceUID = generate_uid()
+    file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+    dataset = FileDataset(str(path), {}, file_meta=file_meta, preamble=b"\0" * 128)
+    dataset.PatientName = "Sensitive^Patient"
+    dataset.PatientID = "MRN-123"
+    dataset.StudyInstanceUID = generate_uid()
+    dataset.SeriesInstanceUID = generate_uid()
+    dataset.SOPInstanceUID = file_meta.MediaStorageSOPInstanceUID
+    dataset.ReferencedImageSequence = [pydicom.Dataset()]
+    dataset.ReferencedImageSequence[0].ReferencedSOPInstanceUID = referenced_sop_uid
+    dataset.is_little_endian = True
+    dataset.is_implicit_VR = False
+    dataset.save_as(path)
+
+
 async def test_deidentify_job_removes_identifiers(client, tmp_path):
     patient_id = await _create_patient(client)
     session_id = await _create_session(client, patient_id)
@@ -60,3 +78,37 @@ async def test_deidentify_job_removes_identifiers(client, tmp_path):
     assert anonymized.PatientID.startswith("ANON-")
     assert not hasattr(anonymized, "PatientBirthDate")
     assert (output / "deidentification-manifest.json").is_file()
+
+
+async def test_deidentify_job_remaps_cross_file_uid_references(client, tmp_path):
+    patient_id = await _create_patient(client)
+    session_id = await _create_session(client, patient_id)
+    source = tmp_path / "source"
+    output = tmp_path / "output"
+    source.mkdir()
+
+    referenced_uid = generate_uid()
+    _write_dicom(source / "image.dcm")
+    image = pydicom.dcmread(source / "image.dcm")
+    image.SOPInstanceUID = referenced_uid
+    image.file_meta.MediaStorageSOPInstanceUID = referenced_uid
+    image.save_as(source / "image.dcm")
+    _write_referencing_dicom(source / "reference.dcm", referenced_uid)
+
+    response = await client.post(
+        f"/api/v1/sessions/{session_id}/jobs",
+        json={
+            "type": "deidentify",
+            "params": {"source_dir": str(source), "output_dir": str(output)},
+        },
+    )
+    final = await _wait_completed(client, response.json()["id"])
+    assert final["status"] == "completed"
+
+    anonymized_image = pydicom.dcmread(output / "image.dcm")
+    anonymized_reference = pydicom.dcmread(output / "reference.dcm")
+    assert anonymized_image.SOPInstanceUID != referenced_uid
+    assert (
+        anonymized_reference.ReferencedImageSequence[0].ReferencedSOPInstanceUID
+        == anonymized_image.SOPInstanceUID
+    )

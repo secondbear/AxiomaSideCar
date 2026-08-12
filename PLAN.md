@@ -182,13 +182,14 @@ Side-fixes discovered by tests:
 
 ### Step 14 — PyInstaller spec ✅
 `sidecar.spec` and `sidecar_entry.py` created:
-- `sidecar_entry.py` — CLI entry point; accepts `--host`, `--port`, `--reload`; calls `uvicorn.run("main:app", ...)`.
+- `sidecar_entry.py` — CLI entry point; accepts `--host`, `--port`, `--reload`; passes the imported FastAPI app directly to Uvicorn and configures frozen engine paths.
 - `sidecar.spec` — one-file build spec (binaries + data embedded in EXE, no COLLECT step).
   - Hidden imports cover all uvicorn dynamic protocol/loop backends, anyio backends,
     pydantic v2, aiosqlite, multipart.
   - Excludes: tkinter, matplotlib, IPython, pytest, ruff (~40 MB saved).
-  - Build command: `pyinstaller sidecar.spec --distpath axioma-sidecar/bin`
+  - Build command: `pyinstaller --noconfirm --clean sidecar.spec --distpath axioma-sidecar/bin --workpath /tmp/axioma-sidecar-build`
   - Output: `axioma-sidecar/bin/axioma-sidecar` — matches Tauri `externalBin` path.
+  - Smoke test: start `axioma-sidecar --port 8765` and verify `GET http://127.0.0.1:8765/health` returns `{"status":"ok","database":"ok"}`.
 
 ---
 
@@ -205,7 +206,7 @@ Side-fixes discovered by tests:
 - [ ] `GET /api/v1/datasets/{id}/slice?axis=axial&index=120` returns binary + `X-Slice-Meta`
 - [ ] POST a job → poll → status reaches `completed`
 - [x] `pytest -q` — 26 tests, all passing locally
-- [x] Tauri sidecar binary builds and boots
+- [x] Tauri sidecar binary builds, boots, and passes the packaged `/health` smoke test
 
 ---
 

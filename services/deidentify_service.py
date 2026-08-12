@@ -30,6 +30,29 @@ def _stable_patient_id(value: str) -> str:
     return f"ANON-{digest}"
 
 
+def _collect_uids(dataset: pydicom.Dataset, uid_map: dict[str, str]) -> None:
+    for element in dataset.iterall():
+        if element.VR != "UI" or not element.value:
+            continue
+        values = element.value if isinstance(element.value, list) else [element.value]
+        for value in values:
+            original = str(value)
+            uid_map.setdefault(original, generate_uid())
+
+
+def _remap_uids(dataset: pydicom.Dataset, uid_map: dict[str, str]) -> None:
+    for element in dataset.iterall():
+        if element.VR != "UI" or not element.value:
+            continue
+        if isinstance(element.value, list):
+            element.value = [uid_map.get(str(value), str(value)) for value in element.value]
+        else:
+            element.value = uid_map.get(str(element.value), str(element.value))
+    for element in dataset.file_meta.iterall():
+        if element.VR == "UI" and element.value:
+            element.value = uid_map.get(str(element.value), str(element.value))
+
+
 def deidentify_dicom_tree(source_dir: str, output_dir: str) -> dict:
     source = Path(source_dir).resolve()
     output = Path(output_dir).resolve()
@@ -45,6 +68,7 @@ def deidentify_dicom_tree(source_dir: str, output_dir: str) -> dict:
 
     manifest = []
     patient_map: dict[str, str] = {}
+    datasets: list[tuple[Path, Path, pydicom.Dataset]] = []
     for input_path in files:
         relative = input_path.relative_to(source)
         output_path = output / relative
@@ -53,6 +77,17 @@ def deidentify_dicom_tree(source_dir: str, output_dir: str) -> dict:
             dataset = pydicom.dcmread(input_path)
         except (OSError, pydicom.errors.InvalidDicomError):
             continue
+        datasets.append((input_path, output_path, dataset))
+
+    if not datasets:
+        raise ValueError("Source directory contains no readable DICOM files")
+
+    uid_map: dict[str, str] = {}
+    for _, _, dataset in datasets:
+        _collect_uids(dataset, uid_map)
+
+    for _, output_path, dataset in datasets:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
         original_patient_id = str(getattr(dataset, "PatientID", "UNKNOWN"))
         anonymized_id = patient_map.setdefault(
@@ -63,15 +98,9 @@ def deidentify_dicom_tree(source_dir: str, output_dir: str) -> dict:
                 delattr(dataset, attribute)
         dataset.PatientID = anonymized_id
         dataset.PatientName = "ANONYMOUS"
-        dataset.StudyInstanceUID = generate_uid()
-        dataset.SeriesInstanceUID = generate_uid()
-        if hasattr(dataset, "SOPInstanceUID"):
-            dataset.SOPInstanceUID = generate_uid()
+        _remap_uids(dataset, uid_map)
         dataset.save_as(output_path)
         manifest.append({"path": str(relative), "size_bytes": output_path.stat().st_size})
-
-    if not manifest:
-        raise ValueError("Source directory contains no readable DICOM files")
 
     manifest_path = output / "deidentification-manifest.json"
     manifest_path.write_text(

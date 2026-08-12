@@ -23,14 +23,18 @@ def _canonical_measurement_column(name: str) -> str:
     aliases = {
         "depth": "depth",
         "depthcm": "depth",
+        "depthmm": "depth",
         "dose": "dose",
         "dosepercent": "dose",
         "relativedose": "dose",
         "position": "position",
         "positioncm": "position",
+        "positionmm": "position",
         "lateralposition": "position",
+        "scanposition": "position",
         "fieldsize": "fieldsize",
         "fieldsizecm": "fieldsize",
+        "fieldsizemm": "fieldsize",
         "sf": "sf",
         "outputfactor": "sf",
         "relativeoutput": "sf",
@@ -199,7 +203,11 @@ async def upload_measurement(file: UploadFile = File()):  # noqa: B008
         raise HTTPException(status_code=415, detail="Only CSV measurement files are supported")
     try:
         text = contents.decode("utf-8-sig")
-        reader = csv.DictReader(io.StringIO(text))
+        try:
+            dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
+        except csv.Error:
+            dialect = csv.excel
+        reader = csv.DictReader(io.StringIO(text), dialect=dialect)
         if not reader.fieldnames:
             raise ValueError("CSV header is missing")
         rows = []
@@ -209,7 +217,8 @@ async def upload_measurement(file: UploadFile = File()):  # noqa: B008
                 name = (key or "").strip()
                 raw_value = (value or "").strip()
                 try:
-                    normalized_row[name] = float(raw_value)
+                    numeric_value = raw_value.replace(",", ".") if "," in raw_value else raw_value
+                    normalized_row[name] = float(numeric_value)
                 except ValueError:
                     normalized_row[name] = raw_value
             rows.append(normalized_row)

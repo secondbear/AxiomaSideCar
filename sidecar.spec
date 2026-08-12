@@ -77,7 +77,23 @@ hiddenimports += collect_submodules("skimage")
 datas = []
 datas += collect_data_files("uvicorn")  # uvicorn ships a few data files
 datas.append((str(DEFORM_ROOT / "gendosecalc" / "deform"), "deform_package/gendosecalc/deform"))
-datas.append((str(GEN_DOSE_ROOT / "data" / "Commissioning"), "data/Commissioning"))
+COMMISSIONING_ROOT = GEN_DOSE_ROOT / "data" / "Commissioning"
+for asset in (
+    "machines.yaml",
+    "jaw_calibration_RX01.yaml",
+    "RX01_newlinac/beam_data",
+    "RX01_newlinac/beam_models",
+    "RX01_newlinac/geometry",
+    "RX01_newlinac/jaw",
+    "RX01_newlinac/mlc",
+    "RX01_newlinac/oar",
+    "RX01_newlinac/output_factors",
+    "RX01_newlinac/pdd",
+    "RX01_newlinac/scatter",
+):
+    source = COMMISSIONING_ROOT / asset
+    destination = Path("data/Commissioning") / asset
+    datas.append((str(source), str(destination)))
 
 # ---------------------------------------------------------------------------
 # Analysis

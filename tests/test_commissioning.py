@@ -132,6 +132,25 @@ async def test_upload_measurement_normalizes_vendor_headers(client):
     ]
 
 
+async def test_upload_measurement_accepts_semicolon_and_unit_headers(client):
+    resp = await client.post(
+        "/api/v1/commissioning/upload",
+        files={
+            "file": (
+                "pdd_iba.csv",
+                b"Depth [mm];Dose [%]\n0;100,0\n50;80,5\n",
+                "text/csv",
+            )
+        },
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["normalized"]["pdd"] == [
+        {"x": 0.0, "y": 100.0},
+        {"x": 50.0, "y": 80.5},
+    ]
+
+
 async def test_water_phantom_calc(client, monkeypatch):
     monkeypatch.setattr(
         "routers.commissioning._sync_to_gendosecalc",
