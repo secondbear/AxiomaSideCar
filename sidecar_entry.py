@@ -7,7 +7,16 @@ Defaults match development usage: host=127.0.0.1, port=8000.
 """
 
 import argparse
+import os
 import sys
+
+if getattr(sys, "frozen", False):
+    import gendosecalc
+
+    os.chdir(sys._MEIPASS)
+    gendosecalc.__path__.append(os.path.join(sys._MEIPASS, "deform_package", "gendosecalc"))
+
+from main import app
 
 
 def main() -> None:
@@ -19,12 +28,9 @@ def main() -> None:
 
     import uvicorn  # noqa: PLC0415 — intentional late import for frozen-binary compat
 
-    uvicorn.run(
-        "main:app",
-        host=args.host,
-        port=args.port,
-        reload=args.reload,
-    )
+    if args.reload:
+        parser.error("--reload is not supported by the frozen executable")
+    uvicorn.run(app, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

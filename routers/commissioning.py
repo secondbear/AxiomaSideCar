@@ -1,6 +1,9 @@
 import asyncio
+import csv
 import hashlib
+import io
 import json
+import re
 import uuid
 from datetime import UTC, datetime
 
@@ -9,10 +12,30 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from database import DB_PATH
-from schemas import DoseResult, MachineRecord
+from schemas import BeamModel, DoseResult, GoldenData, MachineRecord
 from services.dose_service import run_phantom_calc
 
 router = APIRouter()
+
+
+def _canonical_measurement_column(name: str) -> str:
+    compact = re.sub(r"[^a-z0-9]", "", name.lower())
+    aliases = {
+        "depth": "depth",
+        "depthcm": "depth",
+        "dose": "dose",
+        "dosepercent": "dose",
+        "relativedose": "dose",
+        "position": "position",
+        "positioncm": "position",
+        "lateralposition": "position",
+        "fieldsize": "fieldsize",
+        "fieldsizecm": "fieldsize",
+        "sf": "sf",
+        "outputfactor": "sf",
+        "relativeoutput": "sf",
+    }
+    return aliases.get(compact, compact)
 
 
 def _sync_to_gendosecalc(machine_id: str, machine_dict: dict) -> None:
@@ -85,14 +108,144 @@ async def create_machine(body: CreateMachineBody):
     }
 
 
+class BeamModelBody(BaseModel):
+    version: str
+    parameters: dict
+
+
+@router.get("/commissioning/machines/{machine_id}/beam-model", response_model=BeamModel)
+async def get_beam_model(machine_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM machines WHERE id=?", (machine_id,)) as cur:
+            row = await cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Machine not found")
+    params = json.loads(row["params"] or "{}")
+    model = params.get("beam_model", {})
+    payload = json.dumps(model.get("parameters", {}), sort_keys=True)
+    return {
+        "machine_id": machine_id,
+        "version": model.get("version", "draft"),
+        "sha256": hashlib.sha256(payload.encode()).hexdigest(),
+        "parameters": model.get("parameters", {}),
+    }
+
+
+@router.put("/commissioning/machines/{machine_id}/beam-model", response_model=BeamModel)
+async def put_beam_model(machine_id: str, body: BeamModelBody):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM machines WHERE id=?", (machine_id,)) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Machine not found")
+        if row["status"] == "locked":
+            raise HTTPException(status_code=409, detail="Locked machine beam model is immutable")
+        params = json.loads(row["params"] or "{}")
+        params["beam_model"] = {"version": body.version, "parameters": body.parameters}
+        now = datetime.now(UTC).isoformat()
+        await db.execute(
+            "UPDATE machines SET params=?, updated_at=? WHERE id=?",
+            (json.dumps(params, sort_keys=True), now, machine_id),
+        )
+        await db.commit()
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None,
+        _sync_to_gendosecalc,
+        machine_id,
+        {"id": machine_id, "beam_model": params["beam_model"]},
+    )
+    payload = json.dumps(body.parameters, sort_keys=True)
+    return {
+        "machine_id": machine_id,
+        "version": body.version,
+        "sha256": hashlib.sha256(payload.encode()).hexdigest(),
+        "parameters": body.parameters,
+    }
+
+
+@router.get("/commissioning/machines/{machine_id}/golden-data", response_model=GoldenData)
+async def get_golden_data(machine_id: str):
+    async with (
+        aiosqlite.connect(DB_PATH) as db,
+        db.execute("SELECT params FROM machines WHERE id=?", (machine_id,)) as cur,
+    ):
+        row = await cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Machine not found")
+    params = json.loads(row[0] or "{}")
+    golden = params.get("golden_data", {})
+    data = golden.get("data", {})
+    payload = json.dumps(data, sort_keys=True)
+    return {
+        "machine_id": machine_id,
+        "version": golden.get("version"),
+        "sha256": golden.get("sha256") or hashlib.sha256(payload.encode()).hexdigest(),
+        "data": data,
+    }
+
+
 # ── CSV / measurement file upload ─────────────────────────────────────────────
 
 
 @router.post("/commissioning/upload")
 async def upload_measurement(file: UploadFile = File()):  # noqa: B008
     contents = await file.read()
-    # Return raw bytes size for now; real implementation parses IBA/PTW/CSV
-    return {"filename": file.filename, "size": len(contents), "status": "received"}
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Measurement file exceeds 10 MiB limit")
+    if not (file.filename or "").lower().endswith(".csv"):
+        raise HTTPException(status_code=415, detail="Only CSV measurement files are supported")
+    try:
+        text = contents.decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(text))
+        if not reader.fieldnames:
+            raise ValueError("CSV header is missing")
+        rows = []
+        for row in reader:
+            normalized_row = {}
+            for key, value in row.items():
+                name = (key or "").strip()
+                raw_value = (value or "").strip()
+                try:
+                    normalized_row[name] = float(raw_value)
+                except ValueError:
+                    normalized_row[name] = raw_value
+            rows.append(normalized_row)
+    except (UnicodeDecodeError, csv.Error, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid measurement CSV: {exc}") from exc
+
+    columns = [column.strip() for column in reader.fieldnames]
+    column_aliases = {_canonical_measurement_column(column): column for column in columns}
+    canonical_columns = set(column_aliases)
+    normalized: dict[str, list[dict]] = {}
+    if {"depth", "dose"}.issubset(canonical_columns):
+        depth_column = column_aliases["depth"]
+        dose_column = column_aliases["dose"]
+        normalized["pdd"] = [{"x": row[depth_column], "y": row[dose_column]} for row in rows]
+    elif {"position", "dose"}.issubset(canonical_columns):
+        position_column = column_aliases["position"]
+        dose_column = column_aliases["dose"]
+        category = "profile10cm" if "10cm" in (file.filename or "").lower() else "profileDmax"
+        normalized[category] = [{"x": row[position_column], "y": row[dose_column]} for row in rows]
+    elif {"fieldsize", "sf"}.issubset(canonical_columns):
+        field_column = column_aliases["fieldsize"]
+        sf_column = column_aliases["sf"]
+        normalized["outputFactors"] = [
+            {"fieldSize": row[field_column], "sf": row[sf_column]} for row in rows
+        ]
+
+    return {
+        "filename": file.filename,
+        "size": len(contents),
+        "status": "parsed",
+        "sha256": hashlib.sha256(contents).hexdigest(),
+        "columns": columns,
+        "row_count": len(rows),
+        "measurements": rows,
+        "normalized": normalized,
+    }
 
 
 # ── Water-phantom calculation ─────────────────────────────────────────────────

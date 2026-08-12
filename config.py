@@ -25,5 +25,8 @@ class Settings(BaseSettings):
     # When set, relative paths in job params are resolved against this root.
     engine_data_root: str | None = None
 
+    # Redact direct identifiers and local paths from API responses when enabled.
+    privacy_redaction_enabled: bool = False
+
 
 settings = Settings()

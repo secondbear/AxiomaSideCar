@@ -17,10 +17,13 @@ dependencies = [
     "numpy>=1.26",
     "scipy>=1.13",
     "pydicom>=2.4",
+    "zarr>=3.0",
+    "scikit-image>=0.22",
 ]
 
 [project.scripts]
 axioma-sidecar = "main:app"
+axioma-sidecar-openapi = "scripts.export_openapi:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

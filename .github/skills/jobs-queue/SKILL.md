@@ -96,6 +96,7 @@ canonical job type name used in `POST /api/v1/sessions/:id/jobs`.
 | `register` | `services/deform_service.run_registration` | `{manifest, out_dir}` |
 | `dose-accumulation` | `services/deform_service.run_dose_accumulation` | `DeformableDoseReport.as_dict()` |
 | `phantom-calc` | `services/dose_service.run_phantom_calc` | `{maxDoseGy, meanDoseGy, nProjections, provenance}` |
+| `deidentify` | `services.deidentify_service.deidentify_dicom_tree` | `{file_count, output_dir, artifacts}` |
 
 ## Planned but not yet wired
 
@@ -115,6 +116,9 @@ call the analysis function. Loading/saving `DoseGrid` objects to disk should use
 
 All file paths in `params` must be **absolute** strings. The frontend sends
 paths from its file picker; the sidecar does not resolve relative paths.
+
+The `deidentify` job requires absolute `source_dir` and `output_dir` paths. It
+writes anonymized DICOM files plus a relative-path manifest under `output_dir`.
 
 ```json
 {

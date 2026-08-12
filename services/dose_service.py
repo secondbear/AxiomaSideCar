@@ -29,6 +29,8 @@ from pathlib import Path
 from gendosecalc.motion import apply_motion, load_motion_source
 from gendosecalc.plan.clinical_run import ClinicalRunContext
 
+from services.provenance import normalize_provenance
+
 
 def run_dose_calc(session_id: str, params: dict) -> dict:
     """Compute planned static dose.
@@ -48,7 +50,7 @@ def run_dose_calc(session_id: str, params: dict) -> dict:
     return {
         "maxDoseGy": float(dose_grid.dose_gy.max()),
         "meanDoseGy": float(dose_grid.dose_gy.mean()),
-        "provenance": ctx.provenance_dict(),
+        "provenance": normalize_provenance(session_id, ctx.provenance_dict()),
     }
 
 
@@ -83,5 +85,7 @@ def run_phantom_calc(params: dict) -> dict:
         "maxDoseGy": float(dose_grid.dose_gy.max()),
         "meanDoseGy": float(dose_grid.dose_gy.mean()),
         "nProjections": len(projections),
-        "provenance": ctx.provenance_dict(),
+        "provenance": normalize_provenance(
+            str(params.get("session_id", "")), ctx.provenance_dict()
+        ),
     }

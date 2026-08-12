@@ -10,7 +10,14 @@
 # One-file build is produced by passing a.binaries and a.datas directly into
 # EXE (rather than into a COLLECT step).
 
+from pathlib import Path
+import sys
+
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
+ROOT = Path(SPECPATH).resolve()
+GEN_DOSE_ROOT = ROOT.parent / "GenDoseCalc" / "GenDoseCalc"
+DEFORM_ROOT = ROOT.parent / "DeformCTMovement"
 
 # ---------------------------------------------------------------------------
 # Collect dynamic sub-modules that PyInstaller's static analysis misses
@@ -52,19 +59,36 @@ hiddenimports = [
 
 # Pull in every uvicorn sub-module to be safe
 hiddenimports += collect_submodules("uvicorn")
+sys.path.insert(0, str(DEFORM_ROOT))
+hiddenimports += collect_submodules("gendosecalc.deform")
+sys.path.pop(0)
+sys.path.insert(0, str(GEN_DOSE_ROOT))
+hiddenimports += collect_submodules("gendosecalc.analysis")
+hiddenimports += collect_submodules("gendosecalc.plan")
+hiddenimports += collect_submodules("gendosecalc")
+sys.path.pop(0)
+hiddenimports += collect_submodules("pycdms")
+hiddenimports += collect_submodules("zarr")
+hiddenimports += collect_submodules("skimage")
 
 # ---------------------------------------------------------------------------
 # Data files (none required at runtime — SQLite DB is created on first boot)
 # ---------------------------------------------------------------------------
 datas = []
 datas += collect_data_files("uvicorn")  # uvicorn ships a few data files
+datas.append((str(DEFORM_ROOT / "gendosecalc" / "deform"), "deform_package/gendosecalc/deform"))
+datas.append((str(GEN_DOSE_ROOT / "data" / "Commissioning"), "data/Commissioning"))
 
 # ---------------------------------------------------------------------------
 # Analysis
 # ---------------------------------------------------------------------------
 a = Analysis(
     ["sidecar_entry.py"],
-    pathex=["."],
+    pathex=[
+        str(ROOT),
+        str(ROOT.parent / "GenDoseCalc" / "GenDoseCalc"),
+        str(ROOT.parent / "DeformCTMovement"),
+    ],
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,

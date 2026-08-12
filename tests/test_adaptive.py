@@ -1,5 +1,9 @@
 """Tests for the adaptive router — contour review PATCH status."""
 
+import json
+import uuid
+from datetime import UTC, datetime
+
 import aiosqlite
 
 import routers.adaptive as adaptive_module
@@ -66,3 +70,75 @@ async def test_patch_contour_unknown_returns_404(client):
         json={"status": "accepted"},
     )
     assert resp.status_code == 404
+
+
+async def _seed_registration(job_id: str, session_id: str, result: dict | None = None) -> None:
+    now = datetime.now(UTC).isoformat()
+    async with aiosqlite.connect(adaptive_module.DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO jobs "
+            "(id, session_id, type, status, progress, result, created_at, updated_at) "
+            "VALUES (?, ?, 'register', 'completed', 1.0, ?, ?, ?)",
+            (
+                job_id,
+                session_id,
+                json.dumps(result or {"manifest": {"n_states": 2}}),
+                now,
+                now,
+            ),
+        )
+        await db.commit()
+
+
+async def test_registration_detail_and_contour_acceptance(client):
+    session_id = str(uuid.uuid4())
+    job_id = str(uuid.uuid4())
+    await _seed_registration(job_id, session_id)
+
+    detail = await client.get(f"/api/v1/registrations/{job_id}")
+    accepted = await client.post(f"/api/v1/registrations/{job_id}/contours/CTV/accept")
+
+    assert detail.status_code == 200
+    assert detail.json()["job_id"] == job_id
+    assert accepted.status_code == 200
+    assert accepted.json()["structure_id"] == "CTV"
+    assert accepted.json()["status"] == "accepted"
+
+
+async def test_registration_metrics_are_typed(client):
+    session_id = str(uuid.uuid4())
+    job_id = str(uuid.uuid4())
+    await _seed_registration(
+        job_id,
+        session_id,
+        {
+            "registrations": [
+                {
+                    "fractionIndex": 1,
+                    "rmsSurfaceDistanceMm": 1.2,
+                    "meanDice": 0.91,
+                    "approved": True,
+                }
+            ]
+        },
+    )
+
+    listing = await client.get(f"/api/v1/adaptive/sessions/{session_id}/registrations")
+    detail = await client.get(f"/api/v1/registrations/{job_id}")
+
+    assert listing.status_code == 200
+    assert listing.json() == [
+        {
+            "fraction_index": 1,
+            "rms_surface_distance_mm": 1.2,
+            "mean_dice": 0.91,
+            "approved": True,
+        }
+    ]
+    assert detail.json()["metrics"] == listing.json()
+
+
+async def test_dose_accumulation_requires_persisted_result(client):
+    response = await client.get(f"/api/v1/adaptive/sessions/{uuid.uuid4()}/dose-accumulation")
+
+    assert response.status_code == 404
