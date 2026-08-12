@@ -18,6 +18,10 @@ from services.dose_service import run_phantom_calc
 router = APIRouter()
 
 
+# Columns whose canonical unit is centimeters; mm variants are scaled on read.
+_MM_TO_CM_COLUMNS = {"depthmm", "positionmm", "fieldsizemm"}
+
+
 def _canonical_measurement_column(name: str) -> str:
     compact = re.sub(r"[^a-z0-9]", "", name.lower())
     aliases = {
@@ -40,6 +44,12 @@ def _canonical_measurement_column(name: str) -> str:
         "relativeoutput": "sf",
     }
     return aliases.get(compact, compact)
+
+
+def _column_unit_scale(name: str) -> float:
+    """Return the cm-conversion factor for a raw (pre-canonicalization) column name."""
+    compact = re.sub(r"[^a-z0-9]", "", name.lower())
+    return 0.1 if compact in _MM_TO_CM_COLUMNS else 1.0
 
 
 def _sync_to_gendosecalc(machine_id: str, machine_dict: dict) -> None:
@@ -228,21 +238,32 @@ async def upload_measurement(file: UploadFile = File()):  # noqa: B008
     columns = [column.strip() for column in reader.fieldnames]
     column_aliases = {_canonical_measurement_column(column): column for column in columns}
     canonical_columns = set(column_aliases)
+
+    def _x_value(row: dict, column: str) -> float | str:
+        value = row[column]
+        if isinstance(value, float):
+            return value * _column_unit_scale(column)
+        return value
+
     normalized: dict[str, list[dict]] = {}
     if {"depth", "dose"}.issubset(canonical_columns):
         depth_column = column_aliases["depth"]
         dose_column = column_aliases["dose"]
-        normalized["pdd"] = [{"x": row[depth_column], "y": row[dose_column]} for row in rows]
+        normalized["pdd"] = [
+            {"x": _x_value(row, depth_column), "y": row[dose_column]} for row in rows
+        ]
     elif {"position", "dose"}.issubset(canonical_columns):
         position_column = column_aliases["position"]
         dose_column = column_aliases["dose"]
         category = "profile10cm" if "10cm" in (file.filename or "").lower() else "profileDmax"
-        normalized[category] = [{"x": row[position_column], "y": row[dose_column]} for row in rows]
+        normalized[category] = [
+            {"x": _x_value(row, position_column), "y": row[dose_column]} for row in rows
+        ]
     elif {"fieldsize", "sf"}.issubset(canonical_columns):
         field_column = column_aliases["fieldsize"]
         sf_column = column_aliases["sf"]
         normalized["outputFactors"] = [
-            {"fieldSize": row[field_column], "sf": row[sf_column]} for row in rows
+            {"fieldSize": _x_value(row, field_column), "sf": row[sf_column]} for row in rows
         ]
 
     return {

@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pydicom
 from pydicom.dataset import FileDataset, FileMetaDataset
@@ -112,3 +113,27 @@ async def test_deidentify_job_remaps_cross_file_uid_references(client, tmp_path)
         anonymized_reference.ReferencedImageSequence[0].ReferencedSOPInstanceUID
         == anonymized_image.SOPInstanceUID
     )
+
+
+async def test_deidentify_job_manifest_records_each_file_own_path(client, tmp_path):
+    patient_id = await _create_patient(client)
+    session_id = await _create_session(client, patient_id)
+    source = tmp_path / "source"
+    output = tmp_path / "output"
+    source.mkdir()
+    _write_dicom(source / "a.dcm")
+    _write_dicom(source / "b.dcm")
+    _write_dicom(source / "c.dcm")
+
+    response = await client.post(
+        f"/api/v1/sessions/{session_id}/jobs",
+        json={
+            "type": "deidentify",
+            "params": {"source_dir": str(source), "output_dir": str(output)},
+        },
+    )
+    final = await _wait_completed(client, response.json()["id"])
+    assert final["status"] == "completed"
+    manifest = json.loads((output / "deidentification-manifest.json").read_text())
+    recorded_paths = sorted(item["path"] for item in manifest["files"])
+    assert recorded_paths == ["a.dcm", "b.dcm", "c.dcm"]

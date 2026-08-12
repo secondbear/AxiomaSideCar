@@ -77,7 +77,7 @@ def deidentify_dicom_tree(source_dir: str, output_dir: str) -> dict:
             dataset = pydicom.dcmread(input_path)
         except (OSError, pydicom.errors.InvalidDicomError):
             continue
-        datasets.append((input_path, output_path, dataset))
+        datasets.append((relative, output_path, dataset))
 
     if not datasets:
         raise ValueError("Source directory contains no readable DICOM files")
@@ -86,9 +86,7 @@ def deidentify_dicom_tree(source_dir: str, output_dir: str) -> dict:
     for _, _, dataset in datasets:
         _collect_uids(dataset, uid_map)
 
-    for _, output_path, dataset in datasets:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
+    for relative, output_path, dataset in datasets:
         original_patient_id = str(getattr(dataset, "PatientID", "UNKNOWN"))
         anonymized_id = patient_map.setdefault(
             original_patient_id, _stable_patient_id(original_patient_id)

@@ -145,9 +145,10 @@ async def test_upload_measurement_accepts_semicolon_and_unit_headers(client):
     )
 
     assert resp.status_code == 200
+    # mm depth column must be scaled to the canonical cm unit
     assert resp.json()["normalized"]["pdd"] == [
         {"x": 0.0, "y": 100.0},
-        {"x": 50.0, "y": 80.5},
+        {"x": 5.0, "y": 80.5},
     ]
 
 

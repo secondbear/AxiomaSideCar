@@ -78,20 +78,31 @@ datas = []
 datas += collect_data_files("uvicorn")  # uvicorn ships a few data files
 datas.append((str(DEFORM_ROOT / "gendosecalc" / "deform"), "deform_package/gendosecalc/deform"))
 COMMISSIONING_ROOT = GEN_DOSE_ROOT / "data" / "Commissioning"
-for asset in (
+_SAFE_MACHINE_SUBDIRS = (
+    "beam_data",
+    "beam_models",
+    "geometry",
+    "jaw",
+    "mlc",
+    "oar",
+    "output_factors",
+    "pdd",
+    "scatter",
+    "watertank",
+)
+_COMMISSIONING_ASSETS = [
     "machines.yaml",
     "jaw_calibration_RX01.yaml",
-    "RX01_newlinac/beam_data",
-    "RX01_newlinac/beam_models",
-    "RX01_newlinac/geometry",
-    "RX01_newlinac/jaw",
-    "RX01_newlinac/mlc",
-    "RX01_newlinac/oar",
-    "RX01_newlinac/output_factors",
-    "RX01_newlinac/pdd",
-    "RX01_newlinac/scatter",
-):
+    "jaw_calibration_RX02.yaml",
+] + [
+    f"{machine}/{subdir}"
+    for machine in ("RX01_newlinac", "RX01_oldlinac", "RX02")
+    for subdir in _SAFE_MACHINE_SUBDIRS
+]
+for asset in _COMMISSIONING_ASSETS:
     source = COMMISSIONING_ROOT / asset
+    if not source.exists():
+        continue
     destination = Path("data/Commissioning") / asset
     datas.append((str(source), str(destination)))
 
